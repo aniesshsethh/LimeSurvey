@@ -2799,6 +2799,6 @@ class remotecontrol_handle
 
                 }             
         }
-        return $answers;
+        return json_encode($answers);
     }
 }
