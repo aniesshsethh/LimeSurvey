@@ -2734,4 +2734,71 @@ class remotecontrol_handle
     		 
     	}    
     }
+    function export_answers_simple($sSessionKey,$iSurveyID,$iResponseID){
+        if (!$this->_checkSessionKey($sSessionKey)) return array('status' => 'Invalid session key');
+        Yii::app()->loadHelper('admin/exportresults');
+        if (!tableExists('{{survey_' . $iSurveyID . '}}')) return array('status' => 'No Data');
+		if(!$count = Survey_dynamic::model($iSurveyID)->count()) return array('status' => 'No Data');
+
+        if (!hasSurveyPermission($iSurveyID, 'responses', 'export')) return array('status' => 'No permission');
+        if (is_null($sLanguageCode)) $sLanguageCode=getBaseLanguageFromSurveyID($iSurveyID);
+        
+        $answers = array();
+        $responses = array();
+
+        $oRow = Survey_dynamic::model($iSurveyID)->findByAttributes(array('id' => 25));
+        $responses = $oRow->attributes;
+        $aQuestions = Questions::model()->findAllByAttributes(array("sid"=>$iSurveyID));
+
+        foreach($aQuestions as $key=>$value){                        
+                $type = $value['type'];                  
+                if($type == '!' || $type=='L')
+                {
+                   
+                    $sgqa = $iSurveyID.'X'.$value['gid']."X".$value['qid'];                        
+                    $answer = $responses[$sgqa];
+                    $answers["field".$value['qid']] = array(
+                          'response' => $answer
+                    );
+                    if($answer == '-oth-'){
+                        $otheranswer = $responses[$sgqa."other"];
+                        $answers["field".$value['qid']]['other']=$otheranswer;
+                    }
+
+
+                }
+               elseif($type=='M') {
+                   
+                   $subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid']));
+                   $subquestionanswer = array();
+                   foreach($subquestion as $answersubquestion)
+                   {        
+                       $subquestionid = $answersubquestion->attributes['title'];
+                       $sgqa = $iSurveyID.'X'.$value['gid']."X".$value['qid'].$subquestionid;                                                                   
+                       $answer = $responses[$sgqa];
+            
+                       if($answer=='Y')
+                       {               
+                            array_push($subquestionanswer,$subquestionid);
+                       }                       
+                   }
+                   $answers["field".$value['qid']]['response'] = $subquestionanswer;
+                   if($value['other']=='Y')
+                   {
+                        $sgqa = $iSurveyID.'X'.$value['gid']."X".$value['qid']."other";    
+                        $answers["field".$value['qid']]['other'] = $responses[$sgqa];    
+                        
+                   }
+                }
+                elseif($type=='U' || $type=='T' || $type=='S' || $type=='D' || $type=='N'){
+                        if($value['parent_qid']==0)
+                        {
+                            $sgqa = $iSurveyID.'X'.$value['gid']."X".$value['qid'];                                      
+                            $answers["field".$value['qid']] = $responses[$sgqa];    
+                        }
+
+                }             
+        }
+        return $answers;
+    }
 }
