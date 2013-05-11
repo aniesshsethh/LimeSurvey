@@ -2746,7 +2746,7 @@ class remotecontrol_handle
         $answers = array();
         $responses = array();
 
-        $oRow = Survey_dynamic::model($iSurveyID)->findByAttributes(array('id' => 25));
+        $oRow = Survey_dynamic::model($iSurveyID)->findByAttributes(array('id' => $iResponseID));
         $responses = $oRow->attributes;
         $aQuestions = Questions::model()->findAllByAttributes(array("sid"=>$iSurveyID));
 
