@@ -2801,4 +2801,578 @@ class remotecontrol_handle
         }
         return json_encode($answers);
     }
+    function rsystemfile($sSessionKey,$iSurveyID,$sLanguageCode){
+        $oSurvey = Survey::model()->findByPk($iSurveyID);
+        $dataHeader = array();
+        $dataHeader[] ='';
+        $dataHeader[] ='ID';
+        $questionsData = array();
+        $optionsData = array(); 
+        $alreadyProcessed = array();
+        $arrayalreadyprocessed = array();
+        
+    	if ($this->_checkSessionKey($sSessionKey))
+    	{
+            
+            if (is_null($sLanguageCode)) $sLanguageCode=getBaseLanguageFromSurveyID($iSurveyID);
+            
+            $fieldmap = createFieldMap($iSurveyID,'full',true,false,$sLanguageCode);
+            unset($fieldmap['id']);unset($fieldmap['submitdate']);unset($fieldmap['lastpage']);unset($fieldmap['startlanguage']);unset($fieldmap['token']);unset($fieldmap['startdate']);
+            unset($fieldmap['datestamp']);unset($fieldmap['ipaddr']);unset($fieldmap['refurl']);
+         	//	Question and level CSV files - start
+            foreach($fieldmap as $key=>$value)
+            {
+                
+                $type = $value['type'];
+                switch($type){
+                    case 'M':
+                    case 'K':
+                        if(!in_array($value['qid'],$alreadyProcessed))
+                        {
+                        	
+                            $subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid']),array('order'=>'question_order'));
+                            $qtype = 'logical';
+                            $attquestion = Question_attributes::model()->findAllByAttributes(array('qid'=>$value['qid'],'attribute'=>'TYPE'));
+                            if(isset($attquestion[0]->attributes['value']))
+                            {
+                            	$qtype = $attquestion[0]->attributes['value'];
+                            }
+                            $questionsData[] = array($value['qid'],$value['title'],$qtype,count($subquestion),count($dataHeader)+1,0,$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");                            
+                            foreach($subquestion as $subq)
+                            {
+                                $dataHeader[] = $subq['question'];  
+
+                            }                        
+                            $othercheck = Questions::model()->findAllByAttributes(array("qid"=>$value['qid']));                      
+                            if($othercheck[0]->attributes['other'] == 'Y'){                               
+                                $dataHeader[] = 'other';                            
+                            }
+                            $alreadyProcessed[] = $value['qid'];   
+                        }
+                        
+                        break;
+                    case 'L':                         
+                    case 'O':
+                    case '!': 
+                    case 'Y':
+                    case 'G':
+                    case 'W':
+                        if(!in_array($value['qid'],$alreadyProcessed))
+                        {
+                    
+                            $oAttributes = Answers::model()->findAllByAttributes(array('qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'sortorder') );
+                            $options = array();
+                            foreach($oAttributes as $subq)
+                            {
+                                $options[] = $subq->attributes['answer'];
+
+                            }                                    
+                            $optionsData[$value['qid']] = $options;                     
+                            $questionsData[] = array($value['qid'],strip_tags($value['title']),'factor',1,count($dataHeader)+1,count($optionsData[$value['qid']]),$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");
+                            $dataHeader[] = $value['title'];     
+                            $othercheck = Questions::model()->findAllByAttributes(array("qid"=>$value['qid']));
+                            if($othercheck[0]->attributes['other'] == 'Y'){
+                            	$dataHeader[] = 'other';
+                            }
+                            if($type == 'O'){
+                            	$dataHeader[] = 'comment';
+                            }
+                            $alreadyProcessed[] = $value['qid'];   
+                        }  
+                        break;
+                    case ':':
+                        if(!in_array($value['qid'],$alreadyProcessed)){                                           
+                            $subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '0'),array('order'=>'title'));                        
+                            foreach($subquestion as $key=>$values){   
+                                  $data = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '1'),array('order'=>'title'));                        
+                                  $questionsData[] = array($value['qid'],$value['title']."-".$values['question'],'logical',count($data),count($dataHeader)+1,0,$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");    
+                                  foreach($data as $insertdata)
+                                  {
+                                      $dataHeader[] = $insertdata->attributes['question'];
+                                  }
+                            }
+                            $subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '1'),array('order'=>'title'));                        
+                            foreach($subquestion as $key=>$values){
+                                  $data = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '0'),array('order'=>'title'));                        
+                                  $questionsData[] = array($value['qid'],$value['title']."-".$values['question'],'logical',count($data),count($dataHeader)+1,0,$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");    
+                                  foreach($data as $insertdata)
+                                  {
+                                      $dataHeader[] = $insertdata->attributes['question'];
+                                  }
+                            }
+                            $othercheck = Questions::model()->findAllByAttributes(array("qid"=>$value['qid']));                      
+                            if($othercheck[0]->attributes['other'] == 'Y'){                               
+                                $dataHeader[] = 'other';                            
+                            }
+                           $alreadyProcessed[] = $value['qid']; 
+                            
+                        }
+                        break;
+                    case 'R':
+                        if($value['aid'] == 1){
+                            $data = Answers::model()->findAllByAttributes(array('qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'sortorder') );
+                            $questionsData[] = array($value['qid'],$value['title'],'order',count($data),count($dataHeader)+1,0,$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");    
+                            foreach($data as $attributevalue){
+                                 $dataHeader[] = $attributevalue['answer'];
+                            }
+                        }
+                        break;
+                    case 'F':
+                        if(!in_array($value['qid'],$alreadyProcessed)){  
+                              $alreadyProcessed[] = $value['qid']; 
+                                $qid = $value['qid'];
+                                $answer = Answers::model()->findAllByAttributes(array('qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'sortorder') );
+                                $data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ) );
+                                $questionsData[] = array($value['qid'],$value['title'],'ordered',count($data),count($dataHeader)+1,count($answer),$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");    
+                                $splitstring = '';
+                                if($sLanguageCode == 'de'){
+                                    $splitstring = 'HINWEIS';
+                                }
+                                elseif($sLanguageCode == 'en'){
+                                    $splitstring = 'NOTE';
+                                }
+                                else{
+                                    
+                                }
+                                $options = array();
+                                foreach($answer as $value){
+                                	$options[] = $value->attributes['answer'];
+                                }
+                                $optionsData[$value['qid']] = $options;
+                                foreach($data as $questionvalue){
+                                	if (strlen(strstr($questionvalue->attributes['question'],$splitstring))>0) {
+                                		$split = explode($splitstring,$questionvalue->attributes['question']);
+                                		$dataHeader[] = trim(strip_tags($split[0]));
+                                	}
+                                	else{
+                                		$dataHeader[] = $questionvalue->attributes['question'];
+                                	}
+                                }
+                        }                                         
+                        break;
+                    case 'N':                        
+                        $questionsData[] = array($value['qid'],$value['title'],'ordered',1,count($dataHeader)+1,0,$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");    
+                        $dataHeader[] = $value['title'];                        
+                        break;
+                    case 'A':
+                    case 'B':
+                    	if(!in_array($value['qid'],$alreadyProcessed))
+                    	{
+	                    	$data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ) );
+	                    	if($type == 'A'){
+		                    		$questionsData[] = array($value['qid'],$value['title'],'ordered',count($data),count($dataHeader)+1,5,$sLanguageCode,'',$value['question'],$value['gid']."|".$value['qid']."(".$type.")");
+		                    		$options = array();
+		                    		for($i=1;$i<=5;$i++){
+		                    			$options[]=$i;
+		                    		}
+		                    		$optionsData[$value['qid']] = $options;
+	                    	}elseif($type=='B'){
+	                    			$questionsData[] = array($value['qid'],$value['title'],'ordered',count($data),count($dataHeader)+1,10,$sLanguageCode,'',$value['question'],$value['gid']."|".$value['qid']."(".$type.")");
+	                    			$options = array();
+	                    			for($i=1;$i<=10;$i++){
+	                    				$options[]=$i;
+	                    			}
+	                    			$optionsData[$value['qid']] = $options;
+	                    	}
+	                    	else{ }               
+	                    	$alreadyProcessed[] = $value['qid'];                    	 
+		                    foreach($data as $questionvalue){
+		                    	$dataHeader[] = $questionvalue->attributes['question'];
+		                    }
+                    	}
+                    	break;
+                    case 'C':
+                    case 'E':
+                    	if(!in_array($value['qid'],$alreadyProcessed))
+                    	{
+                    		$data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ) );
+                    		if($type == 'C'){
+                    			$options = array();
+                    			$op = array('Yes','No','Uncertain');
+                    			foreach($op as $ops){
+                    				$options[]=$ops;
+                    			}
+                    			$optionsData[$value['qid']] = $options;
+                    			$questionsData[] = array($value['qid'],$value['title'],'ordered',count($data),count($dataHeader)+1,3,$sLanguageCode,'SCALE=BIPOLAR',$value['question'],$value['gid']."|".$value['qid']."(".$type.")");
+                    		}elseif($type=='E'){
+                    			$options = array();
+                    			$op = array('Increase','Same','Decrease');
+                    			foreach($op as $ops){
+                    				$options[]=$ops;
+                    			}
+                    			$optionsData[$value['qid']] = $options;
+                    			$questionsData[] = array($value['qid'],$value['title'],'ordered',count($data),count($dataHeader)+1,3,$sLanguageCode,'SCALE=BIPOLAR',$value['question'],$value['gid']."|".$value['qid']."(".$type.")");
+                    		}
+                    		else{ }
+                    		$alreadyProcessed[] = $value['qid'];
+                    		foreach($data as $questionvalue){
+                    			$dataHeader[] = $questionvalue->attributes['question'];
+                    		}
+                    	}
+                    	break;	
+                    case 'H':
+                      if(!in_array($value['qid'],$alreadyProcessed)){  
+                              $alreadyProcessed[] = $value['qid']; 
+                                $qid = $value['qid'];
+                                $answer = Answers::model()->findAllByAttributes(array('qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'sortorder') );
+                                $data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'question_order') );
+                                $questionsData[] = array($value['qid'],$value['title'],'ordered',count($data),count($dataHeader)+1,count($answer),$sLanguageCode,'',preg_replace("/\s+/", " ", trim(strip_tags($value['question']))),$value['gid']."|".$value['qid']."(".$type.")");    
+                                $splitstring = '';
+                                if($sLanguageCode == 'de'){
+                                    $splitstring = 'HINWEIS';
+                                }
+                                elseif($sLanguageCode == 'en'){
+                                    $splitstring = 'NOTE';
+                                }
+                                else{
+                                    
+                                }
+                                foreach($data as $questionvalue){
+                                     $split = explode($splitstring,$questionvalue->attributes['question']);
+                                     $dataHeader[] = trim(strip_tags($split[0]));
+                                }
+                                $options = array();
+                                foreach($answer as $value){
+                                	$options[] = $value->attributes['answer'];
+                                }
+                                $optionsData[$value['qid']] = $options;
+                        } 
+                    	break;
+                    case '5':
+                    	$questionsData[] = array($value['qid'],$value['title'],'ordered',1,count($dataHeader)+1,5,$sLanguageCode,'',$value['question'],$value['gid']."|".$value['qid']."(".$type.")");
+                    	$dataHeader[] = $value['title'];
+                    	$options = array();
+                    	for($i=1;$i<=5;$i++){
+                    		$options[]=$i;
+                    	}
+                    	$optionsData[$value['qid']] = $options;
+                    	break;	
+                    case 'T':
+                        break;
+                    default: 
+                        break;
+                }
+                        
+            }
+			 // Question and level CSV files - end
+			 //	Data.csv start
+            $oResponses = Survey_dynamic::model($iSurveyID)->findAll();
+            $alreadyProcessed = array();
+            $resultArray = array();
+            $i = 0;
+            foreach($oResponses as $result){
+            	$i++;
+            	$resultArray[$i][]=$result->attributes['id'];
+            	$resultArray[$i][]=$result->attributes['token'];
+            	
+            	foreach($fieldmap as $key=>$value)
+            	{
+            		$type = $value['type'];
+            		switch($type){
+	            		case 'M':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+	            				$subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid']),array('order'=>'question_order'));
+	            				foreach($subquestion as $suboption){
+	            					$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$suboption->attributes['title'];
+	            					if($result->attributes[$sqga] == 'Y'){
+	            						$resultArray[$i][] = 1;
+	            					}else{
+	            						$resultArray[$i][] = 0;
+	            					}	            					         			
+	            					
+	            				}
+	            				$othercheck = Questions::model()->findAllByAttributes(array("qid"=>$value['qid']));
+	            				if($othercheck[0]->attributes['other'] == 'Y'){
+	            					$sqga = $iSurveyID."X".$value['gid']."X".$value['qid']."other";
+	            					$resultArray[$i][] = $result->attributes[$sqga];
+	            				}
+	            				$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		case 'K':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+		            			$subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid']),array('order'=>'question_order'));
+		            			foreach($subquestion as $suboption){
+		            				$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$suboption->attributes['title'];
+		            				if(isset($result->attributes[$sqga])){
+		            					$resultArray[$i][] = $result->attributes[$sqga];
+		            				}else{
+		            					$resultArray[$i][] = '';
+		            				}
+		            				
+		            				$alreadyProcessed[] = $value['qid'];
+		            			}
+	            			}
+	            			break;
+	            		case 'L':
+	            		case 'O':
+	            		case '!':
+	            		case 'W':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+	            				$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'];
+	            				if(isset($result->attributes[$sqga])){	            					
+	            					if($result->attributes[$sqga] == '-oth-'){
+		            					$resultArray[$i][] = '-oth-';
+		            					$resultArray[$i][] = $result->attributes[$sqga."other"];
+	            					}
+	            					else{
+	            						$resultArray[$i][] = $result->attributes[$sqga];
+	            						$othercheck = Questions::model()->findAllByAttributes(array("qid"=>$value['qid']));
+	            						if($othercheck[0]->attributes['other'] == 'Y'){
+	            							$resultArray[$i][] = '';
+	            						}
+	            						
+	            					}
+	            				}
+	            				else{
+	            					$resultArray[$i][] = '';
+	            				}
+								if($type == 'O'){
+									$resultArray[$i][] = $result->attributes[$sqga."comment"];
+								}
+	            				$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		case 'Y':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+		            			$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'];
+		            			if($result->attributes[$sqga]=='Y'){
+		            				$resultArray[$i][] = 1;
+		            			}
+		            			else{
+		            				$resultArray[$i][] = 0;
+		            			}
+		            			$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		case 'G':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+		            			$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'];
+		            			if(isset($result->attributes[$sqga])){
+		            				$resultArray[$i][] = $result->attributes[$sqga];
+		            			}
+		            			else{
+		            				$resultArray[$i][] = '';
+		            			}
+		            			$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		case ':':
+	            			if(!in_array($value['qid'],$alreadyProcessed)){
+	            				$subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '0'),array('order'=>'title'));
+	            				foreach($subquestion as $key=>$values){
+	            					$data = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '1'),array('order'=>'title'));
+	            					foreach($data as $insertdata)
+	            					{
+	            						$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$values->attributes['title']."_".$insertdata->attributes['title'];
+	            						if(isset($result->attributes[$sqga])){
+	            							$resultArray[$i][] = $result->attributes[$sqga];
+	            						}else{
+	            							$resultArray[$i][] = '';
+	            						}
+	            					}
+	            				}
+	            				$subquestion = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '1'),array('order'=>'title'));
+	            				foreach($subquestion as $key=>$values){
+	            					$data = Questions::model()->findAllByAttributes(array("parent_qid"=>$value['qid'],'scale_id' => '0'),array('order'=>'title'));
+	            					foreach($data as $insertdata)
+	            					{
+	            						$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$insertdata->attributes['title']."_".$values->attributes['title'];
+	            						if(isset($result->attributes[$sqga])){
+	            							$resultArray[$i][] = $result->attributes[$sqga];
+	            						}else{
+	            							$resultArray[$i][] = '';
+	            						}
+	            					}
+	            					
+	            				}
+	            				$othercheck = Questions::model()->findAllByAttributes(array("qid"=>$value['qid']));
+	            				if($othercheck[0]->attributes['other'] == 'Y'){
+	            					$dataHeader[] = 'other';
+	            				}
+	            				$alreadyProcessed[] = $value['qid'];
+	    
+	            			}
+	            			break;
+	            		case 'R':
+	            			if($value['aid'] == 1){
+	            				$data = Answers::model()->findAllByAttributes(array('qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'sortorder') );
+	            				foreach($data as $attributevalue){
+	            					$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$attributevalue['code'];
+	            					if(isset($result->attributes[$sqga])){
+	            						$resultArray[$i][] = $result->attributes[$sqga];
+	            					}
+	            					else{
+	            						$resultArray[$i][] = '';
+	            					}
+	            					
+	            				}
+	            			}
+	            			break;
+	            		case 'F':
+	            			if(!in_array($value['qid'],$alreadyProcessed)){
+	            				$qid = $value['qid'];
+	            				
+	            				$data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ) );
+	            			
+	            				foreach($data as $questionvalue){
+	            					$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$questionvalue['title'];
+	            					
+	            		     		if(isset($result->attributes[$sqga])){
+	            						
+	            						$resultArray[$i][] = $result->attributes[$sqga];
+	            					
+	            					}
+	            					else{
+	            						$resultArray[$i][] = '';
+	            					}
+	            				}
+	            				$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		case 'N':
+	            			if(!in_array($value['qid'],$alreadyProcessed)){
+	            				$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'];
+	            					if(isset($result->attributes[$sqga])){
+	            						$resultArray[$i][] = $result->attributes[$sqga];
+	            					}
+	            					else{
+	            						$resultArray[$i][] = '';
+	            					}
+	            					$alreadyProcessed[] = $value['qid'];
+	            				}
+	            			break;
+	            		case 'A':
+	            		case 'B':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+	            				$data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'question_order')  );
+	            				foreach($data as $questionvalue){
+	            				$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$questionvalue->attributes['title'];
+	            					if(isset($result->attributes[$sqga])){
+	            						$resultArray[$i][] = $result->attributes[$sqga];
+	            					}
+	            					else{
+	            						$resultArray[$i][] = '';
+	            					}	
+	            				}
+	            				$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		case 'C':
+	            		case 'E':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+	            				$data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ) ,array('order'=>'question_order') );
+	            			
+	            				foreach($data as $questionvalue){
+	            					$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$questionvalue->attributes['title'];
+	            					if(isset($result->attributes[$sqga])){
+	            						$resultArray[$i][] = $result->attributes[$sqga];
+	            					}
+	            					else{
+	            						$resultArray[$i][] = '';
+	            					}
+	            				}
+	            				$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		case 'H':
+	            			if(!in_array($value['qid'],$alreadyProcessed)){
+	            				$alreadyProcessed[] = $value['qid'];
+	            				$data = Questions::model()->findAllByAttributes(array('parent_qid' => $value['qid'], 'language'=> $sLanguageCode ),array('order'=>'question_order') );
+	            				foreach($data as $questionvalue){
+	            					$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'].$questionvalue->attributes['title'];
+	            					if(isset($result->attributes[$sqga])){
+	            						$resultArray[$i][] = $result->attributes[$sqga];
+	            					}
+	            					else{
+	            						$resultArray[$i][] = '';
+	            					}
+	            				}
+	            			}
+	            			break;
+	            		case '5':
+	            			if(!in_array($value['qid'],$alreadyProcessed))
+	            			{
+		            			$sqga = $iSurveyID."X".$value['gid']."X".$value['qid'];
+		            			if(isset($result->attributes[$sqga])){
+		            				$resultArray[$i][] = $result->attributes[$sqga];
+		            			}
+		            			else{
+		            				$resultArray[$i][] = '';
+		            			}
+		            			$alreadyProcessed[] = $value['qid'];
+	            			}
+	            			break;
+	            		default:
+	            			break;
+	            	}
+            
+            	}
+            }
+            //	Data.csv start
+        }
+        //Question.csv writing
+        $fp = fopen('question.csv', 'w');
+        $header = array('#','label','type','item','offset','level','lang','unit','question','info','comment');
+        fputcsv($fp, $header);
+        foreach ($questionsData as $fields) {
+            fputcsv($fp, $fields);
+        }
+        fclose($fp);
+        //Data.csv writing Just the headers
+        $fp = fopen('data.csv', 'w');        
+        fputcsv($fp, $dataHeader);
+      	foreach($resultArray as $key=>$value){
+      		fputcsv($fp, $value);
+      	}
+        fclose($fp);
+        
+        //Find the highest level in the survey start 
+        $maxval = array();
+        foreach($optionsData as $key=>$value){
+        	$maxval[] = count($value);
+        }
+        $max = max($maxval);
+        
+	     	foreach($optionsData as $key=>$value){
+	     		for ($i = 0; $i <= $max; $i++)
+	     		{
+	     			if(!isset($value[$i])){
+	     				$optionsData[$key][$i] = '';
+	     			}
+	     		}
+	     	}
+	     //Find the highest level in the survey end
+        //Transpose the array build in the loop to something we can write in the file - start
+        $csv_array = Array();
+        $writearray = array();
+        $header = array();
+        foreach($optionsData as $k => $v) {
+        	$header[] = $k;
+        	$i=0;
+        	foreach($v as $r){
+        		$writearray[$i][] = $r;
+        		$i++;
+        	}
+        	$csv_array[] = Array($k, $v);
+        }
+        $fp = fopen('level.csv', 'w');
+        fputcsv($fp, $header);
+        foreach($writearray as $key=>$value){
+        	fputcsv($fp,$value);
+        }
+        fclose($fp);
+        //Transpose the array build in the loop to something we can write in the file - end
+        return "hi";
+        //return $questionsData;
+        //return $writtendata;
+   
+    }
 }
