@@ -2596,10 +2596,10 @@ class remotecontrol_handle
     				if($sGroupSurveyID != $iSurveyID)
     					return array('status' => 'Error: IMissmatch in surveyid and groupid');
     				else
-    					$aQuestionList = Questions::model()->findAllByAttributes(array("sid"=>$iSurveyID, "gid"=>$iGroupID,"parent_qid"=>"0","language"=>$sLanguage),array('order'=>'sortorder') );
+    					$aQuestionList = Questions::model()->findAllByAttributes(array("sid"=>$iSurveyID, "gid"=>$iGroupID,"parent_qid"=>"0","language"=>$sLanguage),array('order'=>'question_order') );
     			}
     			else
-    				$aQuestionList = Questions::model()->findAllByAttributes(array("sid"=>$iSurveyID,"parent_qid"=>"0", "language"=>$sLanguage),array('order'=>'sortorder') );
+    				$aQuestionList = Questions::model()->findAllByAttributes(array("sid"=>$iSurveyID,"parent_qid"=>"0", "language"=>$sLanguage),array('order'=>'question_order') );
     			 
     			if(count($aQuestionList)==0)
     				return array('status' => 'No questions found');
